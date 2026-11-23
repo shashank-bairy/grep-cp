@@ -1,0 +1,75 @@
+# grepcp example config. Copy to /etc/grepcp/config.toml and adjust.
+# Run `grepcp doctor --config /etc/grepcp/config.toml` on the box to check these assumptions.
+
+box_name = "eu1"                      # echoed in every result; register the MCP server as e.g. "logs-eu1"
+timezone = "UTC"                      # IANA name; used for naive times, filename suffixes, line timestamps
+
+[server]
+transport = "https"                   # https | stdio (stdio is always available via `serve --stdio`)
+bind = "0.0.0.0:8765"                 # unprivileged port; restrict reach with a host firewall
+allowed_origins = []                  # Origin header allowlist, e.g. ["https://app.example.com:443"]
+allowed_hosts = []                    # Host header allowlist, e.g. ["logs-eu1.example.com"]; empty = any
+tokens_file = "/etc/grepcp/tokens"    # lines: <name>:<sha256-hex>  (see `grepcp hash-token`)
+rate_limit_per_minute = 120           # per token
+
+[server.tls]                          # required for https; plain HTTP is not offered
+cert = "/etc/grepcp/tls/cert.pem"     # full chain
+key  = "/etc/grepcp/tls/key.pem"      # must not be world-readable (0640 root:grepcp)
+min_version = "1.2"                   # 1.2 | 1.3
+reload = "watch"                      # watch | sighup | off
+# client_ca = "/etc/grepcp/tls/clients-ca.pem"   # optional mTLS on top of tokens
+
+[layout]
+root = "/var/log/remote"
+service_dir = "{root}/{service}"      # flat dir per service
+service_name_regex = "^[A-Za-z0-9._-]+$"
+# named groups: host (required); Y m d H [M] for rotated files; ext for compression
+file_regex = '^(?P<host>.+?)\.log(?:\.(?P<Y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})-(?P<H>\d{2})-(?P<M>\d{2})(?P<ext>\.gz|\.zst)?)?$'
+
+[rotation]
+bucket = "1h"
+suffix_marks = "end"                  # end: suffix = rotation time, file covers previous bucket | start
+include_adjacent_bucket = true        # safety margin until verified via `doctor`
+retention_days = 7
+live_file_copytruncate = true         # disables mmap + tolerates shrink during read
+
+[line]                                # optional; enables in-file time filtering, sorting, fields
+timestamp_regex = '^(?P<ts>\S+)'
+timestamp_format = "rfc3339"          # rfc3339 | rfc3164 | epoch | epoch_ms | strftime pattern
+fields_regex = ''                     # optional named groups: level, thread, logger, trace_id, msg
+
+[limits]
+max_range_hours = 24                  # grep_logs
+max_range_hours_count = 168           # count_matches
+max_lines_default = 200
+max_lines_hard = 2000
+max_bytes = 65_536                    # total output per call; MCP clients cap tool results
+max_line_bytes = 4096
+max_context = 20
+max_scan_bytes = 20_000_000_000       # refuse the plan if the selected files exceed this
+timeout_secs_default = 60
+timeout_secs_max = 180
+workers_per_request = 3               # files one request keeps in flight (look-ahead)
+search_threads = 2                    # shared search pool; match the unit's CPUQuota (200% → 2)
+max_concurrent_requests = 4
+regex_size_limit = 10_485_760
+
+# Example: IDs that embed their creation time (TXN-YYYYMMDD-HHMM-<seq>).
+[[id_decoders]]
+name = "order"
+regex = '^TXN-(?P<Y>\d{4})(?P<m>\d{2})(?P<d>\d{2})-(?P<H>\d{2})(?P<M>\d{2})'
+window = "1h"
+services = ["orders", "orders-worker"]
+
+[[services]]                          # optional; description surfaced in list_services
+name = "orders"
+description = "Order API: create / update / cancel / status"
+
+[locate]
+window_default = "1h"
+max_scan_bytes = 5_000_000_000
+
+[[redaction]]
+name = "bearer"
+regex = '(?i)bearer\s+[a-z0-9._-]+'
+replace = "bearer <redacted>"

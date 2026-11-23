@@ -1,0 +1,51 @@
+[package]
+name = "grepcp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Read-only MCP server that searches a central log box's rotated log tree in-process"
+license = "MIT"
+
+[features]
+default = ["zstd"]
+zstd = ["dep:zstd"]
+
+[dependencies]
+rmcp = { version = "3.11", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "fs", "io-std"] }
+tokio-util = "0.7"
+axum = "0.8"
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pemfile = "2"
+notify = "8"
+x509-parser = "0.17"
+grep-searcher = "0.1"
+grep-regex = "0.1"
+grep-matcher = "0.1"
+flate2 = "1"
+zstd = { version = "0.13", optional = true }
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+schemars = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "2"
+strsim = "0.11"
+sha2 = "0.10"
+subtle = "2"
+hex = "0.4"
+anyhow = "1"
+tower = "0.5"
+http = "1"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
+rmcp = { version = "3.11", features = ["client", "transport-child-process"] }
