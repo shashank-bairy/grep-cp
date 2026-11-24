@@ -1,20 +1,20 @@
 [Unit]
-Description=grepcp - read-only MCP log search server
+Description=grep-cp - read-only MCP log search server
 Documentation=https://modelcontextprotocol.io
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=grepcp
-Group=grepcp
-ExecStart=/usr/local/bin/grepcp serve --config /etc/grepcp/config.toml
+User=grep-cp
+Group=grep-cp
+ExecStart=/usr/local/bin/grep-cp serve --config /etc/grep-cp/config.toml
 # SIGHUP reloads the TLS certificate without a restart.
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
-Environment=GREPCP_LOG=info
-Environment=GREPCP_LOG_FORMAT=json
+Environment=GREP_CP_LOG=info
+Environment=GREP_CP_LOG_FORMAT=json
 
 # Be polite to a shared production box.
 Nice=10
@@ -27,7 +27,7 @@ MemoryHigh=768M
 MemoryMax=1G
 TasksMax=64
 
-# Hardening. The process only ever reads the log root and /etc/grepcp.
+# Hardening. The process only ever reads the log root and /etc/grep-cp.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -50,7 +50,7 @@ RemoveIPC=yes
 UMask=0077
 # install.sh rewrites this line when --log-root differs.
 ReadOnlyPaths=/var/log/remote
-ReadOnlyPaths=/etc/grepcp
+ReadOnlyPaths=/etc/grep-cp
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # Optional: allow only your client ranges at the socket level (in addition to the firewall).
 #IPAddressDeny=any

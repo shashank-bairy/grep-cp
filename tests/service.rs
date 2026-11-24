@@ -11,12 +11,12 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode, header};
-use grepcp::app::App;
-use grepcp::config::Settings;
-use grepcp::errors::ToolError;
-use grepcp::tools::search::GrepLogsParams;
-use grepcp::tools::{CallCtx, TimeParams};
-use grepcp::transport::http::router;
+use grep_cp::app::App;
+use grep_cp::config::Settings;
+use grep_cp::errors::ToolError;
+use grep_cp::tools::search::GrepLogsParams;
+use grep_cp::tools::{CallCtx, TimeParams};
+use grep_cp::transport::http::router;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
@@ -131,7 +131,7 @@ async fn cancelled_request_stops() {
     let app = app_with(&fx, |t| t);
     let ctx = CallCtx::local("test");
     ctx.cancel.cancel();
-    let r = grepcp::tools::search::grep_logs(&app, grep_params(), &ctx).await;
+    let r = grep_cp::tools::search::grep_logs(&app, grep_params(), &ctx).await;
     match r {
         Err(ToolError::Stopped(m)) => assert!(m.contains("cancelled"), "{m}"),
         Ok(out) => {
@@ -153,19 +153,19 @@ async fn busy_when_all_slots_are_taken() {
         )
     });
     let held = app.acquire().await.unwrap();
-    let r = grepcp::tools::search::grep_logs(&app, grep_params(), &CallCtx::local("test")).await;
+    let r = grep_cp::tools::search::grep_logs(&app, grep_params(), &CallCtx::local("test")).await;
     assert!(matches!(r, Err(ToolError::Busy(1))), "{r:?}");
     drop(held);
-    let r = grepcp::tools::search::grep_logs(&app, grep_params(), &CallCtx::local("test")).await;
+    let r = grep_cp::tools::search::grep_logs(&app, grep_params(), &CallCtx::local("test")).await;
     assert!(r.is_ok(), "{r:?}");
 }
 
 #[test]
 fn dst_day_counts_as_24_hours() {
     let tz: chrono_tz::Tz = "Europe/Berlin".parse().unwrap();
-    let now = grepcp::parse::time::parse_instant("2026-12-01T00:00:00Z", &tz).unwrap();
-    let w = grepcp::parse::time::resolve(
-        &grepcp::parse::time::TimeSpec {
+    let now = grep_cp::parse::time::parse_instant("2026-12-01T00:00:00Z", &tz).unwrap();
+    let w = grep_cp::parse::time::resolve(
+        &grep_cp::parse::time::TimeSpec {
             date: Some("2026-10-25".into()),
             ..Default::default()
         },
@@ -175,6 +175,6 @@ fn dst_day_counts_as_24_hours() {
     .unwrap()
     .unwrap();
     assert_eq!(w.total_len(), chrono::Duration::hours(25));
-    assert!(grepcp::tools::check_range(&w, 24, "grep_logs", &tz).is_ok());
-    assert!(grepcp::tools::check_range(&w, 23, "grep_logs", &tz).is_err());
+    assert!(grep_cp::tools::check_range(&w, 24, "grep_logs", &tz).is_ok());
+    assert!(grep_cp::tools::check_range(&w, 23, "grep_logs", &tz).is_err());
 }

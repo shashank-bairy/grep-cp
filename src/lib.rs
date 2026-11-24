@@ -1,4 +1,4 @@
-//! grepcp — a read-only MCP server that searches a central log box's rotated log tree in-process.
+//! grep-cp — a read-only MCP server that searches a central log box's rotated log tree in-process.
 //!
 //! Layers:
 //! - [`config`]: TOML schema, defaults, validation and compiled runtime settings.

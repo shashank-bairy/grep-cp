@@ -229,7 +229,7 @@ pub async fn serve_https(app: Arc<App>) -> anyhow::Result<()> {
             handle.graceful_shutdown(Some(Duration::from_secs(10)));
         });
     }
-    tracing::info!(%addr, box_name = s.box_name(), "grepcp listening (https, MCP at /mcp)");
+    tracing::info!(%addr, box_name = s.box_name(), "grep-cp listening (https, MCP at /mcp)");
     if tls.client_ca.is_none() {
         tracing::warn!(
             "no client authentication: anyone who can reach {addr} can search these logs; restrict it with a firewall/VPN or set [server.tls] client_ca"

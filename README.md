@@ -1,6 +1,6 @@
-# grepcp
+# grep-cp
 
-`grepcp` (grep + MCP) is a read-only [MCP](https://modelcontextprotocol.io) server that you install
+`grep-cp` (grep + MCP) is a read-only [MCP](https://modelcontextprotocol.io) server that you install
 on a central log box (for example an rsyslog aggregator). It searches that box's rotated log tree
 in-process, so AI clients such as Claude Code can look through production logs safely, quickly
 and within fixed limits.
@@ -65,7 +65,7 @@ See [`config.example.toml`](config.example.toml) for every option.
 
 ```bash
 cargo build --release
-# Static binary for the box (match the arch that `grepcp doctor` reports):
+# Static binary for the box (match the arch that `grep-cp doctor` reports):
 cargo zigbuild --release --target x86_64-unknown-linux-musl
 ```
 
@@ -75,28 +75,28 @@ cargo zigbuild --release --target x86_64-unknown-linux-musl
 sudo deploy/install.sh --log-root /var/log/remote
 ```
 
-The script creates the `grepcp` system user, installs the binary to `/usr/local/bin`, and writes
-`/etc/grepcp/config.toml` from the example. It grants read ACLs on the log root, including default
+The script creates the `grep-cp` system user, installs the binary to `/usr/local/bin`, and writes
+`/etc/grep-cp/config.toml` from the example. It grants read ACLs on the log root, including default
 ACLs so new hourly files stay readable, and installs the systemd unit. It keeps an existing config
 and certificates. Then:
 
 ```bash
 # TLS certificate and key (key must not be world-readable)
-sudo cp cert.pem key.pem /etc/grepcp/tls/
-sudo chown root:grepcp /etc/grepcp/tls/*.pem && sudo chmod 0640 /etc/grepcp/tls/key.pem
+sudo cp cert.pem key.pem /etc/grep-cp/tls/
+sudo chown root:grep-cp /etc/grep-cp/tls/*.pem && sudo chmod 0640 /etc/grep-cp/tls/key.pem
 
 # Check the config against the real box: timezone, filename matches, line timestamps,
 # rotation suffix semantics, file sizes, ACLs, certificate expiry
-sudo -u grepcp grepcp doctor --config /etc/grepcp/config.toml
+sudo -u grep-cp grep-cp doctor --config /etc/grep-cp/config.toml
 
-sudo systemctl enable --now grepcp
+sudo systemctl enable --now grep-cp
 ```
 
-To pick up a renewed certificate without a restart, run `systemctl reload grepcp` (SIGHUP). With
+To pick up a renewed certificate without a restart, run `systemctl reload grep-cp` (SIGHUP). With
 `reload = "watch"` (the default), certificate files are also picked up automatically when they
 change.
 
-**Restrict who can reach the port (default `8765`).** grepcp has no login of its own: anyone who can
+**Restrict who can reach the port (default `8765`).** grep-cp has no login of its own: anyone who can
 connect can search the logs. Firewall the port to your VPN or office ranges, put it behind a proxy
 that authenticates, and/or require client certificates with `[server.tls] client_ca`.
 
@@ -109,10 +109,10 @@ claude mcp add --transport http logs-eu1 https://logbox.example.com:8765/mcp
 ```
 
 Over SSH with stdio. SSH is the authentication and the server runs with your own permissions. Your
-user must be able to read the config file, for example by being in the `grepcp` group.
+user must be able to read the config file, for example by being in the `grep-cp` group.
 
 ```bash
-claude mcp add logs-eu1 -- ssh logbox grepcp serve --stdio --config /etc/grepcp/config.toml
+claude mcp add logs-eu1 -- ssh logbox grep-cp serve --stdio --config /etc/grep-cp/config.toml
 ```
 
 Register each box as its own server (for example `logs-eu1`, `logs-us1`). Every result carries the
@@ -121,14 +121,14 @@ box name.
 ## CLI
 
 ```
-grepcp serve [--stdio | --http]    run the MCP server (transport defaults to the config)
-grepcp doctor                      check config assumptions against this box
-grepcp check-config                validate the config file
-grepcp plan --service S --last 2h  dry run: which files a search would scan
+grep-cp serve [--stdio | --http]    run the MCP server (transport defaults to the config)
+grep-cp doctor                      check config assumptions against this box
+grep-cp check-config                validate the config file
+grep-cp plan --service S --last 2h  dry run: which files a search would scan
 ```
 
-All commands take `--config PATH` (or `GREPCP_CONFIG`, default `/etc/grepcp/config.toml`). Logs go
-to stderr; set `GREPCP_LOG=debug` for more detail and `GREPCP_LOG_FORMAT=json` for JSON.
+All commands take `--config PATH` (or `GREP_CP_CONFIG`, default `/etc/grep-cp/config.toml`). Logs go
+to stderr; set `GREP_CP_LOG=debug` for more detail and `GREP_CP_LOG_FORMAT=json` for JSON.
 
 ## Security model
 
@@ -136,7 +136,7 @@ to stderr; set `GREPCP_LOG=debug` for more detail and `GREPCP_LOG_FORMAT=json` f
   tool. Access control is the network (firewall, VPN, or an authenticating reverse proxy) plus
   optional mTLS (`client_ca`). `doctor` and the server log warn when mTLS is off. Over stdio, SSH
   is the authentication.
-- Runs as the dedicated `grepcp` user and never as root. Unreadable service directories are
+- Runs as the dedicated `grep-cp` user and never as root. Unreadable service directories are
   reported as unreadable.
 - No tool accepts a raw path. Paths are built from the root, a validated service name and a
   filename taken from a directory listing, and symlinks that point outside the root are ignored.
@@ -154,7 +154,7 @@ to stderr; set `GREPCP_LOG=debug` for more detail and `GREPCP_LOG_FORMAT=json` f
 
 ```bash
 cargo test            # unit tests + engine tests (compared against `rg -z -c`) + MCP end-to-end
-cargo test --test e2e # rmcp client ↔ `grepcp serve --stdio` against a generated log tree
+cargo test --test e2e # rmcp client ↔ `grep-cp serve --stdio` against a generated log tree
 ```
 
 ## License

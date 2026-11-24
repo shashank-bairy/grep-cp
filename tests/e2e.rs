@@ -1,4 +1,4 @@
-//! End-to-end: rmcp client ↔ `grepcp serve --stdio` (child process) against a generated fixture.
+//! End-to-end: rmcp client ↔ `grep-cp serve --stdio` (child process) against a generated fixture.
 
 #[path = "fixtures/gen.rs"]
 mod fixtures;
@@ -17,12 +17,12 @@ struct Client {
 async fn start(fx: fixtures::Fixture) -> Client {
     let cfg = fx.config.clone();
     let transport = TokioChildProcess::new(
-        tokio::process::Command::new(env!("CARGO_BIN_EXE_grepcp")).configure(|c| {
+        tokio::process::Command::new(env!("CARGO_BIN_EXE_grep-cp")).configure(|c| {
             c.arg("serve")
                 .arg("--stdio")
                 .arg("--config")
                 .arg(&cfg)
-                .env("GREPCP_LOG", "warn");
+                .env("GREP_CP_LOG", "warn");
         }),
     )
     .unwrap();

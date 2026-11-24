@@ -2,15 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-use grepcp::app::App;
-use grepcp::config::{Settings, Transport};
-use grepcp::engine::output::human_bytes;
-use grepcp::parse::time::{TimeSpec, fmt_local};
+use grep_cp::app::App;
+use grep_cp::config::{Settings, Transport};
+use grep_cp::engine::output::human_bytes;
+use grep_cp::parse::time::{TimeSpec, fmt_local};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(
-    name = "grepcp",
+    name = "grep-cp",
     version,
     about = "Read-only MCP server that searches a log box's rotated log tree"
 )]
@@ -19,8 +19,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
-        env = "GREPCP_CONFIG",
-        default_value = "/etc/grepcp/config.toml"
+        env = "GREP_CP_CONFIG",
+        default_value = "/etc/grep-cp/config.toml"
     )]
     config: PathBuf,
     #[command(subcommand)]
@@ -31,7 +31,7 @@ struct Cli {
 enum Cmd {
     /// Run the MCP server.
     Serve {
-        /// Serve over stdin/stdout (e.g. via `ssh box grepcp serve --stdio`).
+        /// Serve over stdin/stdout (e.g. via `ssh box grep-cp serve --stdio`).
         #[arg(long, conflicts_with = "http")]
         stdio: bool,
         /// Serve over HTTPS (needs [server.tls]).
@@ -62,11 +62,11 @@ enum Cmd {
 }
 
 fn init_tracing() {
-    let filter = EnvFilter::try_from_env("GREPCP_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_env("GREP_CP_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
     let b = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr);
-    if std::env::var("GREPCP_LOG_FORMAT").as_deref() == Ok("json") {
+    if std::env::var("GREP_CP_LOG_FORMAT").as_deref() == Ok("json") {
         b.json().init();
     } else {
         b.compact().init();
@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Doctor => {
             let s = load(&cli.config)?;
-            let (report, warnings) = grepcp::doctor::run(s)?;
+            let (report, warnings) = grep_cp::doctor::run(s)?;
             print!("{report}");
             if warnings > 0 {
                 std::process::exit(2);
@@ -113,10 +113,10 @@ fn main() -> anyhow::Result<()> {
                 date,
                 hours,
             };
-            let window = grepcp::parse::time::resolve(&spec, &s.tz, now)
+            let window = grep_cp::parse::time::resolve(&spec, &s.tz, now)
                 .map_err(anyhow::Error::msg)?
                 .ok_or_else(|| anyhow::anyhow!("give --from/--to, --last or --date"))?;
-            let plan = grepcp::logs::planner::plan(
+            let plan = grep_cp::logs::planner::plan(
                 &app.catalog,
                 &service,
                 &window,
@@ -176,8 +176,8 @@ fn main() -> anyhow::Result<()> {
             rt.block_on(async move {
                 let app = App::new(s)?;
                 match transport {
-                    Transport::Stdio => grepcp::transport::server::serve_stdio(app).await,
-                    Transport::Https => grepcp::transport::http::serve_https(app).await,
+                    Transport::Stdio => grep_cp::transport::server::serve_stdio(app).await,
+                    Transport::Https => grep_cp::transport::http::serve_https(app).await,
                 }
             })
         }

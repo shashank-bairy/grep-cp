@@ -1,5 +1,5 @@
-# grepcp example config. Copy to /etc/grepcp/config.toml and adjust.
-# Run `grepcp doctor --config /etc/grepcp/config.toml` on the box to check these assumptions.
+# grep-cp example config. Copy to /etc/grep-cp/config.toml and adjust.
+# Run `grep-cp doctor --config /etc/grep-cp/config.toml` on the box to check these assumptions.
 
 box_name = "eu1"                      # echoed in every result; register the MCP server as e.g. "logs-eu1"
 timezone = "UTC"                      # IANA name; used for naive times, filename suffixes, line timestamps
@@ -14,11 +14,11 @@ rate_limit_per_minute = 120           # per client IP
 # Restrict access with a firewall/VPN or a fronting proxy, and/or require client certs (client_ca).
 
 [server.tls]                          # required for https; plain HTTP is not offered
-cert = "/etc/grepcp/tls/cert.pem"     # full chain
-key  = "/etc/grepcp/tls/key.pem"      # must not be world-readable (0640 root:grepcp)
+cert = "/etc/grep-cp/tls/cert.pem"     # full chain
+key  = "/etc/grep-cp/tls/key.pem"      # must not be world-readable (0640 root:grep-cp)
 min_version = "1.2"                   # 1.2 | 1.3
 reload = "watch"                      # watch | sighup | off
-# client_ca = "/etc/grepcp/tls/clients-ca.pem"   # optional mTLS: require client certificates
+# client_ca = "/etc/grep-cp/tls/clients-ca.pem"   # optional mTLS: require client certificates
 
 [layout]
 root = "/var/log/remote"

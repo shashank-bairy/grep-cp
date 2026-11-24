@@ -1,4 +1,4 @@
-//! `grepcp doctor`: checks the config's assumptions against the real box and prints findings.
+//! `grep-cp doctor`: checks the config's assumptions against the real box and prints findings.
 
 use std::fmt::Write as _;
 use std::io::{BufRead, BufReader};
@@ -60,7 +60,7 @@ pub fn run(settings: Arc<Settings>) -> anyhow::Result<(String, usize)> {
     #[cfg(not(unix))]
     let euid = 1u32;
     if euid == 0 {
-        r.warn("running as root; the service must run as the dedicated 'grepcp' user");
+        r.warn("running as root; the service must run as the dedicated 'grep-cp' user");
     } else {
         r.info(format!("running as user={user} uid={euid}"));
     }

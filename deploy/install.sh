@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Installs grepcp on a log box: system user, binary, config skeleton, read ACLs on the log root,
+# Installs grep-cp on a log box: system user, binary, config skeleton, read ACLs on the log root,
 # and the systemd unit. Idempotent: an existing config and certificates are kept.
 #
 # Usage (as root, from the repo or a release bundle):
 #   deploy/install.sh [--binary PATH] [--log-root PATH] [--no-acl] [--include-private] [--no-systemd]
 #
 # Service dirs with no group/other access (e.g. root:root 0700) are treated as deliberately private
-# and left alone (grepcp reports them as unreadable) unless --include-private is given.
+# and left alone (grep-cp reports them as unreadable) unless --include-private is given.
 set -euo pipefail
 
 BINARY=""
@@ -14,10 +14,10 @@ LOG_ROOT="/var/log/remote"
 DO_ACL=1
 INCLUDE_PRIVATE=0
 DO_SYSTEMD=1
-USER_NAME="grepcp"
-ETC="/etc/grepcp"
-BIN_DST="/usr/local/bin/grepcp"
-UNIT_DST="/etc/systemd/system/grepcp.service"
+USER_NAME="grep-cp"
+ETC="/etc/grep-cp"
+BIN_DST="/usr/local/bin/grep-cp"
+UNIT_DST="/etc/systemd/system/grep-cp.service"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
@@ -44,14 +44,14 @@ done
 if [[ -z "$BINARY" ]]; then
   arch="$(uname -m)"
   for cand in \
-    "$REPO/target/$arch-unknown-linux-musl/release/grepcp" \
-    "$REPO/target/release/grepcp" \
-    "$HERE/grepcp" \
-    "$REPO/grepcp"; do
+    "$REPO/target/$arch-unknown-linux-musl/release/grep-cp" \
+    "$REPO/target/release/grep-cp" \
+    "$HERE/grep-cp" \
+    "$REPO/grep-cp"; do
     if [[ -x "$cand" ]]; then BINARY="$cand"; break; fi
   done
 fi
-[[ -n "$BINARY" && -x "$BINARY" ]] || die "no grepcp binary found; build it or pass --binary PATH"
+[[ -n "$BINARY" && -x "$BINARY" ]] || die "no grep-cp binary found; build it or pass --binary PATH"
 
 # 1. System user (no login, no home).
 if id -u "$USER_NAME" >/dev/null 2>&1; then
@@ -111,14 +111,14 @@ fi
 if [[ $DO_SYSTEMD -eq 1 ]]; then
   command -v systemctl >/dev/null || die "systemctl not found; pass --no-systemd"
   say "installing $UNIT_DST"
-  sed "s|^ReadOnlyPaths=/var/log/remote$|ReadOnlyPaths=$LOG_ROOT|" "$HERE/grepcp.service" > "$UNIT_DST"
+  sed "s|^ReadOnlyPaths=/var/log/remote$|ReadOnlyPaths=$LOG_ROOT|" "$HERE/grep-cp.service" > "$UNIT_DST"
   chmod 0644 "$UNIT_DST"
   systemctl daemon-reload
 fi
 
 cat <<EOF
 
-grepcp installed. Next steps:
+grep-cp installed. Next steps:
   1. Put the TLS certificate (full chain) and key in $ETC/tls/cert.pem and $ETC/tls/key.pem:
        chown root:$USER_NAME $ETC/tls/*.pem && chmod 0640 $ETC/tls/key.pem
   2. Restrict who can reach the port (default 8765): there is no application-level authentication.
@@ -128,5 +128,5 @@ grepcp installed. Next steps:
   4. Check assumptions on this box:
        sudo -u $USER_NAME $BIN_DST doctor --config $ETC/config.toml
   5. Start:
-       systemctl enable --now grepcp && journalctl -u grepcp -f
+       systemctl enable --now grep-cp && journalctl -u grep-cp -f
 EOF

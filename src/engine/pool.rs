@@ -41,7 +41,7 @@ impl WorkerPool {
         for i in 0..threads {
             let inner = inner.clone();
             std::thread::Builder::new()
-                .name(format!("grepcp-search-{i}"))
+                .name(format!("grep-cp-search-{i}"))
                 .spawn(move || worker(inner))
                 .expect("spawning search worker");
         }

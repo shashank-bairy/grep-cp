@@ -7,10 +7,10 @@ mod fixtures;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use grepcp::config::Settings;
-use grepcp::engine::{self, Guard, Job, Mode, Order, PatternSpec, build_matcher};
-use grepcp::logs::catalog::Catalog;
-use grepcp::parse::time::{Interval, Window};
+use grep_cp::config::Settings;
+use grep_cp::engine::{self, Guard, Job, Mode, Order, PatternSpec, build_matcher};
+use grep_cp::logs::catalog::Catalog;
+use grep_cp::parse::time::{Interval, Window};
 
 fn pool() -> &'static engine::WorkerPool {
     static POOL: std::sync::OnceLock<engine::WorkerPool> = std::sync::OnceLock::new();
@@ -35,7 +35,7 @@ fn all_time() -> Window {
 
 fn job(
     s: &Settings,
-    files: Vec<Arc<grepcp::logs::catalog::LogFile>>,
+    files: Vec<Arc<grep_cp::logs::catalog::LogFile>>,
     spec: &PatternSpec,
     mode: Mode,
     parser: bool,
@@ -319,7 +319,7 @@ fn continuation_lines_respect_the_window() {
         hour + chrono::Duration::minutes(45),
     ));
     let plan =
-        grepcp::logs::planner::plan(&cat, &["orders".to_string()], &window, None, fx.now, None)
+        grep_cp::logs::planner::plan(&cat, &["orders".to_string()], &window, None, fx.now, None)
             .unwrap();
     assert!(
         plan.files.len() >= 6,

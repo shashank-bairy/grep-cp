@@ -59,7 +59,7 @@ pub struct Guard {
     pub bytes: Arc<AtomicU64>,
 }
 
-pub const STOPPED_MSG: &str = "grepcp: search stopped";
+pub const STOPPED_MSG: &str = "grep-cp: search stopped";
 
 impl Guard {
     pub fn new(deadline: Instant) -> Self {

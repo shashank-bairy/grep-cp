@@ -78,7 +78,7 @@ impl GrepServer {
         match res {
             Ok(out) => {
                 tracing::info!(
-                    target: "grepcp::audit",
+                    target: "grep_cp::audit",
                     caller = %ctx.caller,
                     tool,
                     args = %args,
@@ -94,7 +94,7 @@ impl GrepServer {
             }
             Err(e) => {
                 tracing::info!(
-                    target: "grepcp::audit",
+                    target: "grep_cp::audit",
                     caller = %ctx.caller,
                     tool,
                     args = %args,
@@ -262,7 +262,7 @@ impl ServerHandler for GrepServer {
     fn get_info(&self) -> ServerConfig {
         let s = &self.app.settings;
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("grepcp", env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new("grep-cp", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
                 "{INSTRUCTIONS}\nBox: {} (timezone {}).",
                 s.box_name(),
@@ -271,7 +271,7 @@ impl ServerHandler for GrepServer {
     }
 }
 
-/// Serves MCP over stdin/stdout (e.g. `ssh box grepcp serve --stdio`). SSH is the authentication;
+/// Serves MCP over stdin/stdout (e.g. `ssh box grep-cp serve --stdio`). SSH is the authentication;
 /// the server runs with the logged-in user's permissions.
 pub async fn serve_stdio(app: Arc<App>) -> anyhow::Result<()> {
     let user = std::env::var("USER").unwrap_or_else(|_| "unknown".into());

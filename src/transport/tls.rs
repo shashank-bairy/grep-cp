@@ -50,7 +50,7 @@ pub fn check_key_permissions(path: &Path) -> anyhow::Result<()> {
             .mode();
         if mode & 0o004 != 0 {
             bail!(
-                "{} is world-readable (mode {:o}); use 0640 root:grepcp",
+                "{} is world-readable (mode {:o}); use 0640 root:grep-cp",
                 path.display(),
                 mode & 0o777
             );
