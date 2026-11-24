@@ -7,7 +7,7 @@
 //! - [`parse`]: time windows, log line timestamps/fields, IDs with embedded times.
 //! - [`engine`]: in-process search (ripgrep crates), readers, sinks, worker pool, output cleaning.
 //! - [`tools`]: the MCP tool implementations (thin, transport-agnostic).
-//! - [`transport`]: rmcp handler + stdio, HTTPS with token auth, TLS loading.
+//! - [`transport`]: rmcp handler + stdio, HTTPS (rate limit, Host/Origin checks), TLS loading.
 
 pub mod app;
 pub mod config;

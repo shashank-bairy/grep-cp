@@ -327,15 +327,15 @@ pub fn run(settings: Arc<Settings>) -> anyhow::Result<(String, usize)> {
     match srv.transport {
         Transport::Stdio => r.info("transport = stdio"),
         Transport::Https => {
-            match crate::transport::http::load_tokens(&srv.tokens_file) {
-                Ok(t) => r.ok(format!(
-                    "{} tokens in {}",
-                    t.len(),
-                    srv.tokens_file.display()
-                )),
-                Err(e) => r.warn(format!("{e:#}")),
-            }
             if let Some(tls) = &srv.tls {
+                if tls.client_ca.is_none() {
+                    r.warn(format!(
+                        "no client authentication on {}: anyone who can reach this port can search the logs; restrict it with a firewall/VPN or set [server.tls] client_ca",
+                        srv.bind
+                    ));
+                } else {
+                    r.ok("client certificates required (mTLS)");
+                }
                 if let Err(e) = crate::transport::tls::check_key_permissions(&tls.key) {
                     r.warn(format!("{e:#}"));
                 }

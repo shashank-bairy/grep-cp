@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -35,7 +34,7 @@ enum Cmd {
         /// Serve over stdin/stdout (e.g. via `ssh box grepcp serve --stdio`).
         #[arg(long, conflicts_with = "http")]
         stdio: bool,
-        /// Serve over HTTPS (needs [server.tls] and a tokens file).
+        /// Serve over HTTPS (needs [server.tls]).
         #[arg(long)]
         http: bool,
     },
@@ -60,17 +59,6 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         host: Option<Vec<String>>,
     },
-    /// Print the `<name>:<sha256>` tokens-file line for a token.
-    HashToken {
-        /// Name recorded in the audit log.
-        #[arg(long, default_value = "client")]
-        name: String,
-        /// Generate a new random token instead of reading one.
-        #[arg(long)]
-        generate: bool,
-        /// Token to hash; read from stdin if omitted.
-        token: Option<String>,
-    },
 }
 
 fn init_tracing() {
@@ -89,43 +77,9 @@ fn load(path: &std::path::Path) -> anyhow::Result<Arc<Settings>> {
     Ok(Arc::new(Settings::load(path)?))
 }
 
-fn random_token() -> anyhow::Result<String> {
-    let mut b = [0u8; 32];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut b)?;
-    Ok(hex::encode(b))
-}
-
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::HashToken {
-            name,
-            generate,
-            token,
-        } => {
-            let token = if generate {
-                let t = random_token()?;
-                println!("token: {t}");
-                t
-            } else {
-                match token {
-                    Some(t) => t,
-                    None => {
-                        let mut s = String::new();
-                        std::io::stdin().read_line(&mut s)?;
-                        s.trim().to_string()
-                    }
-                }
-            };
-            if token.is_empty() {
-                anyhow::bail!("empty token");
-            }
-            println!(
-                "{name}:{}",
-                hex::encode(grepcp::transport::http::hash_token(&token))
-            );
-            Ok(())
-        }
         Cmd::CheckConfig => {
             let s = load(&cli.config)?;
             println!("config ok: box={} root={}", s.box_name(), s.root.display());

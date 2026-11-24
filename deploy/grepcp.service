@@ -9,7 +9,7 @@ Type=simple
 User=grepcp
 Group=grepcp
 ExecStart=/usr/local/bin/grepcp serve --config /etc/grepcp/config.toml
-# SIGHUP reloads the tokens file and the TLS certificate without a restart.
+# SIGHUP reloads the TLS certificate without a restart.
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5

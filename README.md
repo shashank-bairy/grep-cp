@@ -19,10 +19,10 @@ and within fixed limits.
   async threads, under that limit and the request deadline. Each request has a scan budget, an
   output budget and a deadline, and can be cancelled. The systemd unit runs the server niced,
   at low IO priority, with a CPU quota and memory limits.
-- **Safe by default.** It is read-only and every path is sandboxed to the log root. HTTPS is served
-  directly with rustls (there is no plain HTTP), and clients authenticate with SHA-256-hashed
-  bearer tokens, optionally plus mTLS. Requests are rate-limited, output is redacted, and every
-  call is audit-logged.
+- **Read-only and sandboxed.** Every path is confined to the log root. HTTPS is served directly
+  with rustls (there is no plain HTTP), with optional client certificates (mTLS). Requests are
+  rate-limited per client IP, output is redacted, and every call is audit-logged. There is no
+  application-level login: access control is the network (see [Security model](#security-model)).
 
 Paths, filename patterns, rotation rules, ID formats and service descriptions all come from a
 config file, so nothing is specific to one environment.
@@ -76,17 +76,14 @@ sudo deploy/install.sh --log-root /var/log/remote
 ```
 
 The script creates the `grepcp` system user, installs the binary to `/usr/local/bin`, and writes
-`/etc/grepcp/config.toml` from the example and an empty tokens file. It grants read ACLs on the log
-root, including default ACLs so new hourly files stay readable, and installs the systemd unit. It
-keeps an existing config, tokens and certificates. Then:
+`/etc/grepcp/config.toml` from the example. It grants read ACLs on the log root, including default
+ACLs so new hourly files stay readable, and installs the systemd unit. It keeps an existing config
+and certificates. Then:
 
 ```bash
 # TLS certificate and key (key must not be world-readable)
 sudo cp cert.pem key.pem /etc/grepcp/tls/
 sudo chown root:grepcp /etc/grepcp/tls/*.pem && sudo chmod 0640 /etc/grepcp/tls/key.pem
-
-# One token per client; give the token to the user, append the last line to /etc/grepcp/tokens
-grepcp hash-token --generate --name alice
 
 # Check the config against the real box: timezone, filename matches, line timestamps,
 # rotation suffix semantics, file sizes, ACLs, certificate expiry
@@ -95,17 +92,20 @@ sudo -u grepcp grepcp doctor --config /etc/grepcp/config.toml
 sudo systemctl enable --now grepcp
 ```
 
-To pick up a renewed certificate or changed tokens without a restart, run `systemctl reload
-grepcp` (SIGHUP). With `reload = "watch"` (the default), certificate files are also picked up
-automatically when they change. Firewall the port (default `8765`) to your VPN or office ranges.
+To pick up a renewed certificate without a restart, run `systemctl reload grepcp` (SIGHUP). With
+`reload = "watch"` (the default), certificate files are also picked up automatically when they
+change.
+
+**Restrict who can reach the port (default `8765`).** grepcp has no login of its own: anyone who can
+connect can search the logs. Firewall the port to your VPN or office ranges, put it behind a proxy
+that authenticates, and/or require client certificates with `[server.tls] client_ca`.
 
 ## Connect a client
 
 Over HTTPS (Claude Code):
 
 ```bash
-claude mcp add --transport http logs-eu1 https://logbox.example.com:8765/mcp \
-  --header "Authorization: Bearer <token>"
+claude mcp add --transport http logs-eu1 https://logbox.example.com:8765/mcp
 ```
 
 Over SSH with stdio. SSH is the authentication and the server runs with your own permissions. Your
@@ -125,7 +125,6 @@ grepcp serve [--stdio | --http]    run the MCP server (transport defaults to the
 grepcp doctor                      check config assumptions against this box
 grepcp check-config                validate the config file
 grepcp plan --service S --last 2h  dry run: which files a search would scan
-grepcp hash-token [--generate] [--name N] [TOKEN]
 ```
 
 All commands take `--config PATH` (or `GREPCP_CONFIG`, default `/etc/grepcp/config.toml`). Logs go
@@ -133,6 +132,10 @@ to stderr; set `GREPCP_LOG=debug` for more detail and `GREPCP_LOG_FORMAT=json` f
 
 ## Security model
 
+- **No application-level authentication.** Over HTTPS, anyone who can reach the port can use every
+  tool. Access control is the network (firewall, VPN, or an authenticating reverse proxy) plus
+  optional mTLS (`client_ca`). `doctor` and the server log warn when mTLS is off. Over stdio, SSH
+  is the authentication.
 - Runs as the dedicated `grepcp` user and never as root. Unreadable service directories are
   reported as unreadable.
 - No tool accepts a raw path. Paths are built from the root, a validated service name and a
@@ -144,7 +147,7 @@ to stderr; set `GREPCP_LOG=debug` for more detail and `GREPCP_LOG_FORMAT=json` f
   the server itself.
 - Log text is written by remote senders and is untrusted. The server instructions tell clients
   never to follow instructions found in log lines.
-- The audit log records one event per call: caller, tool, arguments (including the pattern),
+- The audit log records one event per call: caller (`https:<client-ip>` or `stdio:<user>`), tool, arguments (including the pattern),
   files, bytes, matches, elapsed time and outcome. Output is never logged.
 
 ## Development

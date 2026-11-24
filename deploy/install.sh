@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs grepcp on a log box: system user, binary, config skeleton, tokens file, read ACLs on the
-# log root, and the systemd unit. Idempotent: existing config, tokens and certificates are kept.
+# Installs grepcp on a log box: system user, binary, config skeleton, read ACLs on the log root,
+# and the systemd unit. Idempotent: an existing config and certificates are kept.
 #
 # Usage (as root, from the repo or a release bundle):
 #   deploy/install.sh [--binary PATH] [--log-root PATH] [--no-acl] [--include-private] [--no-systemd]
@@ -66,7 +66,7 @@ fi
 say "installing $BINARY -> $BIN_DST"
 install -o root -g root -m 0755 "$BINARY" "$BIN_DST"
 
-# 3. Config dir, config skeleton, tokens file, TLS dir.
+# 3. Config dir, config skeleton, TLS dir.
 install -d -o root -g "$USER_NAME" -m 0750 "$ETC" "$ETC/tls"
 if [[ -f "$ETC/config.toml" ]]; then
   say "keeping existing $ETC/config.toml"
@@ -76,17 +76,6 @@ else
   sed "s|^root = \".*\"|root = \"$LOG_ROOT\"|" "$REPO/config.example.toml" > "$ETC/config.toml"
   chown root:"$USER_NAME" "$ETC/config.toml"
   chmod 0640 "$ETC/config.toml"
-fi
-if [[ -f "$ETC/tokens" ]]; then
-  say "keeping existing $ETC/tokens"
-else
-  say "creating empty $ETC/tokens"
-  cat > "$ETC/tokens" <<'EOF'
-# One line per client: <name>:<sha256-hex>
-# Generate with:  grepcp hash-token --generate --name alice
-EOF
-  chown root:"$USER_NAME" "$ETC/tokens"
-  chmod 0640 "$ETC/tokens"
 fi
 
 # 4. Read access to the log root. Default ACLs make new hourly files readable too.
@@ -132,12 +121,12 @@ cat <<EOF
 grepcp installed. Next steps:
   1. Put the TLS certificate (full chain) and key in $ETC/tls/cert.pem and $ETC/tls/key.pem:
        chown root:$USER_NAME $ETC/tls/*.pem && chmod 0640 $ETC/tls/key.pem
-  2. Add client tokens:
-       grepcp hash-token --generate --name alice   # give 'token' to alice, append the last line to $ETC/tokens
+  2. Restrict who can reach the port (default 8765): there is no application-level authentication.
+     Firewall it to your VPN/office ranges, put it behind an authenticating proxy, and/or require
+     client certificates with [server.tls] client_ca.
   3. Edit $ETC/config.toml (box_name, timezone, file_regex, [line], services).
   4. Check assumptions on this box:
        sudo -u $USER_NAME $BIN_DST doctor --config $ETC/config.toml
   5. Start:
        systemctl enable --now grepcp && journalctl -u grepcp -f
-  6. Firewall the port (default 8765) to your VPN/office ranges.
 EOF

@@ -9,15 +9,16 @@ transport = "https"                   # https | stdio (stdio is always available
 bind = "0.0.0.0:8765"                 # unprivileged port; restrict reach with a host firewall
 allowed_origins = []                  # Origin header allowlist, e.g. ["https://app.example.com:443"]
 allowed_hosts = []                    # Host header allowlist, e.g. ["logs-eu1.example.com"]; empty = any
-tokens_file = "/etc/grepcp/tokens"    # lines: <name>:<sha256-hex>  (see `grepcp hash-token`)
-rate_limit_per_minute = 120           # per token
+rate_limit_per_minute = 120           # per client IP
+# No application-level authentication: anyone who can reach `bind` can search the logs.
+# Restrict access with a firewall/VPN or a fronting proxy, and/or require client certs (client_ca).
 
 [server.tls]                          # required for https; plain HTTP is not offered
 cert = "/etc/grepcp/tls/cert.pem"     # full chain
 key  = "/etc/grepcp/tls/key.pem"      # must not be world-readable (0640 root:grepcp)
 min_version = "1.2"                   # 1.2 | 1.3
 reload = "watch"                      # watch | sighup | off
-# client_ca = "/etc/grepcp/tls/clients-ca.pem"   # optional mTLS on top of tokens
+# client_ca = "/etc/grepcp/tls/clients-ca.pem"   # optional mTLS: require client certificates
 
 [layout]
 root = "/var/log/remote"

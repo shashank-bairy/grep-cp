@@ -26,7 +26,7 @@ use crate::parse::time::{Interval, TimeSpec, Ts, Window, fmt_local};
 #[derive(Clone, Debug)]
 pub struct CallCtx {
     pub cancel: CancellationToken,
-    /// Token name (HTTPS) or `stdio:<user>`; recorded in the audit log.
+    /// `https:<client-ip>` or `stdio:<user>`; recorded in the audit log.
     pub caller: String,
 }
 

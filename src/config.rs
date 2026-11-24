@@ -60,10 +60,7 @@ pub struct ServerSection {
     /// Allowed Host header values (DNS-rebinding protection). Empty = any host.
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
-    /// File with lines `<name>:<sha256-hex>`; required for https.
-    #[serde(default = "d_tokens_file")]
-    pub tokens_file: PathBuf,
-    /// Requests per minute per token.
+    /// Requests per minute per client IP.
     #[serde(default = "d_rate_limit")]
     pub rate_limit_per_minute: u32,
     #[serde(default)]
@@ -77,7 +74,6 @@ impl Default for ServerSection {
             bind: d_bind(),
             allowed_origins: vec![],
             allowed_hosts: vec![],
-            tokens_file: d_tokens_file(),
             rate_limit_per_minute: d_rate_limit(),
             tls: None,
         }
@@ -285,9 +281,6 @@ fn d_transport() -> Transport {
 }
 fn d_bind() -> String {
     "0.0.0.0:8765".into()
-}
-fn d_tokens_file() -> PathBuf {
-    PathBuf::from("/etc/grepcp/tokens")
 }
 fn d_rate_limit() -> u32 {
     120

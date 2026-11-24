@@ -1,16 +1,19 @@
 //! HTTPS transport: rustls served directly (no plain-HTTP listener), MCP Streamable HTTP at `/mcp`,
-//! bearer-token auth (SHA-256 hashes, constant-time compare), per-token rate limit, Origin/Host
-//! checks, certificate hot reload (file watch and/or SIGHUP), graceful shutdown.
+//! per-client-IP rate limit, Origin/Host checks, certificate hot reload (file watch and/or SIGHUP),
+//! graceful shutdown.
+//!
+//! There is no application-level authentication: access control is the network (firewall, VPN,
+//! or a fronting proxy) plus optional mTLS (`[server.tls] client_ca`).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, anyhow, bail};
+use anyhow::{Context, anyhow};
 use axum::Router;
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -18,103 +21,35 @@ use axum::routing::get;
 use axum_server::tls_rustls::RustlsConfig;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
-use sha2::{Digest, Sha256};
-use subtle::ConstantTimeEq;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::App;
 use crate::config::{TlsReload, TlsSection};
 use crate::transport::server::{Caller, GrepServer};
 
-pub type TokenTable = Vec<(String, [u8; 32])>;
-
-pub fn hash_token(token: &str) -> [u8; 32] {
-    Sha256::digest(token.as_bytes()).into()
-}
-
-/// Parses a tokens file: lines `<name>:<sha256-hex>`; blank lines and `#` comments are ignored.
-pub fn parse_tokens(text: &str) -> anyhow::Result<TokenTable> {
-    let mut out = Vec::new();
-    for (i, line) in text.lines().enumerate() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let (name, hex_hash) = line
-            .rsplit_once(':')
-            .ok_or_else(|| anyhow!("tokens line {}: expected <name>:<sha256-hex>", i + 1))?;
-        let name = name.trim();
-        if name.is_empty() {
-            bail!("tokens line {}: empty name", i + 1);
-        }
-        let bytes = hex::decode(hex_hash.trim())
-            .with_context(|| format!("tokens line {}: invalid hex", i + 1))?;
-        let hash: [u8; 32] = bytes.try_into().map_err(|_| {
-            anyhow!(
-                "tokens line {}: hash must be 32 bytes (64 hex chars)",
-                i + 1
-            )
-        })?;
-        out.push((name.to_string(), hash));
-    }
-    Ok(out)
-}
-
-pub fn load_tokens(path: &Path) -> anyhow::Result<TokenTable> {
-    let text =
-        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let t = parse_tokens(&text).with_context(|| path.display().to_string())?;
-    if t.is_empty() {
-        bail!("{}: no tokens configured", path.display());
-    }
-    Ok(t)
-}
-
-/// Returns the token's name if it matches. Compares against every entry in constant time.
-pub fn check_token(table: &TokenTable, token: &str) -> Option<String> {
-    let h = hash_token(token);
-    let mut found = None;
-    for (name, expected) in table {
-        if bool::from(expected.ct_eq(&h)) {
-            found = Some(name.clone());
-        }
-    }
-    found
-}
+/// Rate-limit entries kept before stale ones (older than a minute) are pruned.
+const RATE_TABLE_PRUNE_AT: usize = 10_000;
 
 #[derive(Clone)]
-struct AuthState {
-    tokens: Arc<RwLock<TokenTable>>,
+struct ClientState {
     rate: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     per_minute: u32,
 }
 
-fn unauthorized() -> Response {
-    let mut r = (StatusCode::UNAUTHORIZED, "missing or invalid bearer token").into_response();
-    r.headers_mut()
-        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-    r
-}
-
-async fn auth(State(st): State<AuthState>, mut req: Request, next: Next) -> Response {
-    let token = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| {
-            let (scheme, rest) = v.split_once(' ')?;
-            scheme.eq_ignore_ascii_case("bearer").then(|| rest.trim())
-        });
-    let Some(token) = token else {
-        return unauthorized();
-    };
-    let Some(name) = check_token(&st.tokens.read().unwrap(), token) else {
-        tracing::warn!(target: "grepcp::audit", outcome = "auth_failed", "rejected bearer token");
-        return unauthorized();
-    };
+/// Identifies the caller by client IP (audit log, rate limit). Requests without connection info
+/// (in-process tests) share the key "unknown".
+async fn client(State(st): State<ClientState>, mut req: Request, next: Next) -> Response {
+    let ip = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|c| c.0.ip().to_string())
+        .unwrap_or_else(|| "unknown".into());
     {
         let mut rate = st.rate.lock().unwrap();
-        let e = rate.entry(name.clone()).or_insert((Instant::now(), 0));
+        if rate.len() >= RATE_TABLE_PRUNE_AT {
+            rate.retain(|_, (start, _)| start.elapsed() < Duration::from_secs(60));
+        }
+        let e = rate.entry(ip.clone()).or_insert((Instant::now(), 0));
         if e.0.elapsed() >= Duration::from_secs(60) {
             *e = (Instant::now(), 0);
         }
@@ -128,7 +63,7 @@ async fn auth(State(st): State<AuthState>, mut req: Request, next: Next) -> Resp
             return r;
         }
     }
-    req.extensions_mut().insert(Caller(name));
+    req.extensions_mut().insert(Caller(format!("https:{ip}")));
     next.run(req).await
 }
 
@@ -197,23 +132,12 @@ fn spawn_cert_watcher(t: TlsSection, rustls: RustlsConfig) -> anyhow::Result<()>
 }
 
 #[cfg(unix)]
-fn spawn_sighup(
-    t: TlsSection,
-    rustls: RustlsConfig,
-    tokens_path: PathBuf,
-    tokens: Arc<RwLock<TokenTable>>,
-) -> anyhow::Result<()> {
+fn spawn_sighup(t: TlsSection, rustls: RustlsConfig) -> anyhow::Result<()> {
     use tokio::signal::unix::{SignalKind, signal};
     let mut hup = signal(SignalKind::hangup())?;
     tokio::spawn(async move {
         while hup.recv().await.is_some() {
-            tracing::info!("SIGHUP: reloading tokens and TLS certificate");
-            match load_tokens(&tokens_path) {
-                Ok(t) => *tokens.write().unwrap() = t,
-                Err(e) => {
-                    tracing::error!(error = %format!("{e:#}"), "token reload failed; keeping previous tokens")
-                }
-            }
+            tracing::info!("SIGHUP: reloading TLS certificate");
             if t.reload != TlsReload::Off {
                 reload_tls(&rustls, &t).await;
             }
@@ -242,7 +166,7 @@ async fn shutdown_signal() {
 }
 
 /// Builds the axum router (exposed for tests).
-pub fn router(app: Arc<App>, tokens: Arc<RwLock<TokenTable>>, ct: CancellationToken) -> Router {
+pub fn router(app: Arc<App>, ct: CancellationToken) -> Router {
     let srv = &app.settings.raw.server;
     let mut cfg = StreamableHttpServerConfig::default()
         .with_cancellation_token(ct)
@@ -252,20 +176,19 @@ pub fn router(app: Arc<App>, tokens: Arc<RwLock<TokenTable>>, ct: CancellationTo
     } else {
         cfg.with_allowed_hosts(srv.allowed_hosts.clone())
     };
-    let auth_state = AuthState {
-        tokens,
+    let client_state = ClientState {
         rate: Arc::new(Mutex::new(HashMap::new())),
         per_minute: srv.rate_limit_per_minute.max(1),
     };
     let app2 = app.clone();
     let mcp = StreamableHttpService::new(
-        move || Ok(GrepServer::new(app2.clone(), "https:unauthenticated")),
+        move || Ok(GrepServer::new(app2.clone(), "https:unknown")),
         Arc::new(LocalSessionManager::default()),
         cfg,
     );
     Router::new()
         .nest_service("/mcp", mcp)
-        .layer(middleware::from_fn_with_state(auth_state, auth))
+        .layer(middleware::from_fn_with_state(client_state, client))
         .route("/healthz", get(|| async { "ok" }))
 }
 
@@ -278,7 +201,6 @@ pub async fn serve_https(app: Arc<App>) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow!("https transport requires [server.tls]"))?;
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let tokens = Arc::new(RwLock::new(load_tokens(&srv.tokens_file)?));
     let loaded = crate::transport::tls::load(&tls)?;
     warn_expiry(loaded.not_after);
     let rustls = RustlsConfig::from_config(Arc::new(loaded.config));
@@ -287,19 +209,14 @@ pub async fn serve_https(app: Arc<App>) -> anyhow::Result<()> {
         spawn_cert_watcher(tls.clone(), rustls.clone())?;
     }
     #[cfg(unix)]
-    spawn_sighup(
-        tls.clone(),
-        rustls.clone(),
-        srv.tokens_file.clone(),
-        tokens.clone(),
-    )?;
+    spawn_sighup(tls.clone(), rustls.clone())?;
 
     let addr: SocketAddr = srv
         .bind
         .parse()
         .with_context(|| format!("server.bind '{}'", srv.bind))?;
     let ct = CancellationToken::new();
-    let router = router(app.clone(), tokens, ct.clone());
+    let router = router(app.clone(), ct.clone());
 
     let handle = axum_server::Handle::new();
     {
@@ -313,26 +230,15 @@ pub async fn serve_https(app: Arc<App>) -> anyhow::Result<()> {
         });
     }
     tracing::info!(%addr, box_name = s.box_name(), "grepcp listening (https, MCP at /mcp)");
+    if tls.client_ca.is_none() {
+        tracing::warn!(
+            "no client authentication: anyone who can reach {addr} can search these logs; restrict it with a firewall/VPN or set [server.tls] client_ca"
+        );
+    }
     axum_server::bind_rustls(addr, rustls)
         .handle(handle)
-        .serve(router.into_make_service())
+        .serve(router.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .context("https server")?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tokens_roundtrip() {
-        let h = hex::encode(hash_token("s3cret"));
-        let t = parse_tokens(&format!("# comment\n\nalice:{h}\nbob:{}\n", "0".repeat(64))).unwrap();
-        assert_eq!(check_token(&t, "s3cret").as_deref(), Some("alice"));
-        assert_eq!(check_token(&t, "wrong"), None);
-        assert!(parse_tokens("alice:zz").is_err());
-        assert!(parse_tokens("nocolon").is_err());
-        assert!(parse_tokens(":abcd").is_err());
-    }
 }

@@ -18,7 +18,8 @@ use crate::tools::info::{ListFilesParams, ListServicesParams};
 use crate::tools::search::{CountParams, GrepByIdParams, GrepLogsParams, LocateParams};
 use crate::tools::{self, CallCtx, ToolOutput};
 
-/// Authenticated caller name, inserted into HTTP request extensions by the auth layer.
+/// Caller identity for the audit log (`https:<client-ip>`), inserted into HTTP request extensions
+/// by the HTTPS layer.
 #[derive(Clone, Debug)]
 pub struct Caller(pub String);
 
